@@ -1,18 +1,40 @@
 use std::str::FromStr;
 
 fn main() {
-    let rucksacks = std::io::stdin()
+    let rucksacks: Vec<_> = std::io::stdin()
         .lines()
         .map(Result::unwrap)
         .filter(|l| !l.is_empty())
         .map(|l| l.parse::<Rucksack>())
-        .map(Result::unwrap);
+        .map(Result::unwrap)
+        .collect();
 
-    dbg!(rucksacks.map(|r| r.duplicate_priority_sum()).sum::<u64>());
+    dbg!(
+        "part1",
+        rucksacks
+            .iter()
+            .map(|r| r.duplicate_priority_sum())
+            .sum::<u64>()
+    );
+
+    let badge_priorities = rucksacks
+        .chunks_exact(3)
+        .map(|group| {
+            group
+                .iter()
+                .map(|x| x.all_items())
+                .reduce(|x, y| x.intersection(y))
+                .expect("invalid group")
+        })
+        .map(|set| {
+            assert_eq!(set.len(), 1);
+            set.iter_priorities().next().unwrap()
+        });
+    dbg!("part2", badge_priorities.sum::<u64>());
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-struct Rucksack(RucksackCompartmentSet, RucksackCompartmentSet);
+struct Rucksack(ElfItemSet, ElfItemSet);
 
 impl Rucksack {
     fn duplicate_priorities(&self) -> impl Iterator<Item = u64> {
@@ -21,6 +43,10 @@ impl Rucksack {
 
     fn duplicate_priority_sum(&self) -> u64 {
         self.duplicate_priorities().sum()
+    }
+
+    fn all_items(&self) -> ElfItemSet {
+        self.0.union(self.1)
     }
 }
 
@@ -40,15 +66,23 @@ impl FromStr for Rucksack {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct RucksackCompartmentSet(u64);
+struct ElfItemSet(u64);
 
-impl RucksackCompartmentSet {
+impl ElfItemSet {
     fn mark_item(&mut self, i: usize) {
         self.0 |= 1 << i;
     }
 
     fn intersection(self, other: Self) -> Self {
         Self(self.0 & other.0)
+    }
+
+    fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    fn len(self) -> u32 {
+        self.0.count_ones()
     }
 
     fn iter_priorities(self) -> impl Iterator<Item = u64> {
@@ -59,11 +93,11 @@ impl RucksackCompartmentSet {
     }
 }
 
-impl FromStr for RucksackCompartmentSet {
+impl FromStr for ElfItemSet {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut compartment_items = RucksackCompartmentSet(0);
+        let mut compartment_items = ElfItemSet(0);
 
         for b in s.bytes() {
             let idx = if (b'a'..=b'z').contains(&b) {
