@@ -6,7 +6,19 @@ fn main() {
     dbg!(
         "part1",
         puzzle
+            .clone()
             .execute()
+            .expect("wrong instructions")
+            .into_iter()
+            .filter_map(|mut stack| stack.pop())
+            .map(|c| c.0)
+            .collect::<String>()
+    );
+
+    dbg!(
+        "part2",
+        puzzle
+            .execute_v2()
             .expect("wrong instructions")
             .into_iter()
             .filter_map(|mut stack| stack.pop())
@@ -15,7 +27,7 @@ fn main() {
     );
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Puzzle {
     stacks: Vec<Vec<Crate>>,
     program: Vec<MoveInstruction>,
@@ -50,6 +62,16 @@ impl Puzzle {
                 let el = self.stacks[instr.from].pop()?;
                 self.stacks[instr.to].push(el);
             }
+        }
+
+        Some(self.stacks)
+    }
+
+    fn execute_v2(mut self) -> Option<Vec<Vec<Crate>>> {
+        for instr in self.program {
+            let split_idx = self.stacks[instr.from].len() - instr.amount;
+            let els = self.stacks[instr.from].split_off(split_idx);
+            self.stacks[instr.to].extend(els);
         }
 
         Some(self.stacks)
@@ -145,7 +167,7 @@ fn parse_stacks(mut input: impl Iterator<Item = String>) -> Result<Vec<Vec<Crate
     Ok(stacks)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct MoveInstruction {
     from: usize,
     to: usize,
@@ -199,7 +221,7 @@ impl FromStr for MoveInstruction {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Crate(char);
 
 #[derive(Debug)]
