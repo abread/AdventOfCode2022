@@ -1,19 +1,23 @@
-use std::{collections::HashMap, io::Read};
+use std::{collections::HashMap, pin::Pin};
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_while1},
+    bytes::complete::tag,
     combinator::map,
-    multi::{many0, many_m_n},
-    sequence::{delimited, preceded, separated_pair},
+    sequence::{preceded, separated_pair},
     IResult,
 };
 
 fn main() {
-    let mut input = String::new();
-    std::io::stdin().lock().read_to_string(&mut input).unwrap();
+    let exec_trace = std::io::stdin()
+        .lines()
+        .map(Result::unwrap)
+        //let exec_trace = include_str!("../../in")
+        //    .split("\n")
+        .filter(|s| !s.is_empty())
+        .map(|s| parse_puzzle_input_line(&s));
 
-    let root_dir = File::parse_root(&input).unwrap();
+    let root_dir = File::infer_tree_from_exec_trace(exec_trace);
 
     dbg!(
         "part1",
@@ -57,52 +61,155 @@ fn calc_sizes<'f, 'pr>(
 #[derive(Debug)]
 enum File {
     RegularFile { size: usize },
-    Directory(Vec<(String, File)>),
+    Directory(HashMap<String, File>),
+}
+
+#[derive(Debug)]
+enum PuzzleInputLine {
+    CdRoot,
+    CdParent,
+    CdSubdir(String),
+    Ls,
+    LsOutputEntry(String, File),
+}
+
+fn parse_command_invocation(input: &str) -> IResult<&str, PuzzleInputLine> {
+    alt((
+        map(tag("ls"), |_| PuzzleInputLine::Ls),
+        preceded(
+            tag("cd "),
+            alt((
+                map(tag("/"), |_| PuzzleInputLine::CdRoot),
+                map(tag(".."), |_| PuzzleInputLine::CdParent),
+                |subdir: &str| Ok(("", PuzzleInputLine::CdSubdir(subdir.to_owned()))),
+            )),
+        ),
+        |_| panic!("nooooo"),
+    ))(input)
+}
+
+fn parse_ls_output(input: &str) -> IResult<&str, PuzzleInputLine> {
+    alt((
+        preceded(
+            tag("dir "),
+            map(
+                |s| Ok(("", s)),
+                |name: &str| {
+                    PuzzleInputLine::LsOutputEntry(name.to_owned(), File::Directory(HashMap::new()))
+                },
+            ),
+        ),
+        map(
+            separated_pair(
+                nom::character::complete::u64,
+                tag(" "),
+                map(|s| Ok(("", s)), ToOwned::to_owned),
+            ),
+            |(size, name)| {
+                PuzzleInputLine::LsOutputEntry(
+                    name,
+                    File::RegularFile {
+                        size: size as usize,
+                    },
+                )
+            },
+        ),
+    ))(input)
+}
+
+fn parse_puzzle_input_line(input: &str) -> PuzzleInputLine {
+    let parser_res: IResult<&str, PuzzleInputLine> = alt((
+        preceded(tag("$ "), parse_command_invocation),
+        parse_ls_output,
+        |_| panic!("not command nor ls"),
+    ))(input);
+
+    let (rem, res) = parser_res.unwrap();
+
+    if !rem.is_empty() {
+        panic!("leftover input: {}", rem);
+    }
+
+    res
 }
 
 impl File {
-    fn parse_root(input: &str) -> Result<Self, ParseErr> {
-        let (_rem, (name, file)) = File::_parser(0)(input).map_err(|_| ParseErr)?;
-
-        if name == "/" && matches!(file, File::Directory(_)) {
-            Ok(file)
-        } else {
-            Err(ParseErr)
+    fn infer_tree_from_exec_trace(exec_trace: impl Iterator<Item = PuzzleInputLine>) -> Self {
+        struct FileTree {
+            root: File,
+            cwd_stack: Vec<*mut File>,
         }
-    }
 
-    fn _parser(level: usize) -> impl Fn(&str) -> IResult<&str, (String, Self)> {
-        move |input| {
-            let (mut rem, (file_name, mut file_node)) = delimited(
-                preceded(many_m_n(level, level, tag("  ")), tag("- ")),
-                separated_pair(
-                    map(take_while1(|c| c != ' '), ToOwned::to_owned),
-                    tag(" "),
-                    delimited(tag("("), File::_parse_file_metadata, tag(")")),
-                ),
-                tag("\n"),
-            )(input)?;
-
-            if let File::Directory(entries) = &mut file_node {
-                let (new_rem, parsed_entries) = many0(File::_parser(level + 1))(rem)?;
-                *entries = parsed_entries;
-                rem = new_rem;
+        impl FileTree {
+            // Safety: must pin exactly once (hiding the original binding) and call cd_root afterwards
+            unsafe fn new() -> FileTree {
+                FileTree {
+                    root: File::Directory(HashMap::new()),
+                    cwd_stack: Vec::with_capacity(1),
+                }
             }
 
-            Ok((rem, (file_name, file_node)))
-        }
-    }
+            fn cd_root(self: &mut Pin<&mut Self>) {
+                self.cwd_stack.clear();
+                let root_ptr = &mut self.root as *mut _;
+                self.cwd_stack.push(root_ptr);
+            }
 
-    fn _parse_file_metadata(input: &str) -> IResult<&str, Self> {
-        alt((
-            map(tag("dir"), |_| File::Directory(Vec::new())),
-            map(
-                preceded(tag("file, size="), nom::character::complete::u64),
-                |size| File::RegularFile {
-                    size: size as usize,
-                },
-            ),
-        ))(input)
+            fn cd_parent(self: &mut Pin<&mut Self>) {
+                self.cwd_stack.pop();
+                if self.cwd_stack.is_empty() {
+                    self.cd_root();
+                }
+            }
+
+            fn cd_subdir(self: &mut Pin<&mut Self>, subdir_name: String) {
+                let subdir = match self.cwd() {
+                    File::Directory(entries) => entries
+                        .entry(subdir_name)
+                        .or_insert_with(|| File::Directory(HashMap::new())),
+                    _ => unreachable!("file with same name already exists"),
+                };
+
+                let subdir_ptr = subdir as *mut _;
+                self.cwd_stack.push(subdir_ptr);
+            }
+
+            fn cwd(self: &mut Pin<&mut Self>) -> &mut File {
+                // Safety: a current working directory always exists by construction
+                let cwd_ptr = unsafe { self.cwd_stack.last().copied().unwrap_unchecked() };
+
+                // Safety: self is pinned, and no directories are removed under current working dir, so directory locations have not changed
+                unsafe { &mut *cwd_ptr }
+            }
+
+            fn into_root(mut self: Pin<&mut Self>) -> File {
+                std::mem::replace(&mut self.root, File::Directory(HashMap::new()))
+            }
+        }
+
+        let mut tree = unsafe { FileTree::new() };
+        let mut tree = unsafe { Pin::new_unchecked(&mut tree) };
+        tree.cd_root();
+
+        let mut exec_trace = exec_trace.peekable();
+        while let Some(traced_cmd) = exec_trace.next() {
+            match traced_cmd {
+                PuzzleInputLine::CdParent => tree.cd_parent(),
+                PuzzleInputLine::CdRoot => tree.cd_root(),
+                PuzzleInputLine::CdSubdir(sub) => tree.cd_subdir(sub),
+                PuzzleInputLine::Ls => {
+                    let File::Directory(cwd_entries) = tree.cwd() else { panic!("invalid input: directory is not a directory") };
+                    while let Some(PuzzleInputLine::LsOutputEntry(..)) = exec_trace.peek() {
+                        let Some(PuzzleInputLine::LsOutputEntry(subname, sub)) = exec_trace.next() else { unreachable!() };
+
+                        cwd_entries.entry(subname).or_insert(sub);
+                    }
+                }
+                _ => panic!("invalid input"),
+            }
+        }
+
+        tree.into_root()
     }
 }
 
