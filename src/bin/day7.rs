@@ -18,14 +18,19 @@ fn main() {
         .map(|s| parse_puzzle_input_line(&s));
 
     let root_dir = File::infer_tree_from_exec_trace(exec_trace);
+    let (current_size, sizes) = calc_sizes(&root_dir, "", &[]);
 
     dbg!(
         "part1",
-        calc_sizes(&root_dir, "", &[])
-            .1
-            .into_values()
-            .filter(|v| *v <= 100_000)
-            .sum::<usize>()
+        sizes.values().filter(|v| **v <= 100_000).sum::<usize>()
+    );
+
+    const FS_SIZE: usize = 70_000_000;
+    const REQ_FREE_SIZE: usize = 30_000_000;
+    let min_dir_size = REQ_FREE_SIZE - (FS_SIZE - current_size);
+    dbg!(
+        "part2",
+        sizes.values().filter(|dsize| **dsize >= min_dir_size).min()
     );
 }
 
