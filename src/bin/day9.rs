@@ -33,33 +33,50 @@ struct Rope<const N_COMPONENTS: usize> /* where NComponents >= 2, but we can't e
 }
 
 impl<const N_COMPONENTS: usize> Rope<N_COMPONENTS> {
-    fn translate_head_track_tail(&mut self, mut mov: Movement) -> Vec<Vector> {
-        let mut tail_positions = Vec::with_capacity(mov.amount as usize);
-
-        while let Some(new_head) = mov.translate_coord_step(*self.head_coord()) {
-            *self.head_coord() = new_head;
-
-            for idx in 1..N_COMPONENTS {
-                let (components_prev, components_next) = self.components.split_at_mut(idx);
-                let prev = &components_prev[idx - 1];
-                let current = &mut components_next[0];
-
-                let update = match *prev - *current {
-                    Vector(x, y) if x.abs() <= 1 && y.abs() <= 1 => Vector(0, 0),
-
-                    Vector(x, 0) => Vector(x.signum(), 0),
-                    Vector(0, y) => Vector(0, y.signum()),
-
-                    Vector(x, y) => Vector(x.signum(), y.signum()),
-                };
-
-                *current += update;
-            }
-
-            tail_positions.push(*self.tail_coord());
+    fn translate_head_track_tail(
+        &mut self,
+        movement: Movement,
+    ) -> impl Iterator<Item = Vector> + '_ {
+        struct TailTrackIterator<'rope, const N_COMPONENTS: usize> {
+            rope: &'rope mut Rope<N_COMPONENTS>,
+            movement: Movement,
         }
 
-        tail_positions
+        impl<'rope, const N_COMPONENTS: usize> Iterator for TailTrackIterator<'rope, N_COMPONENTS> {
+            type Item = Vector;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                let new_head = self
+                    .movement
+                    .translate_coord_step(*self.rope.head_coord())?;
+                *self.rope.head_coord() = new_head;
+
+                for component_idx in 1..N_COMPONENTS {
+                    let (components_prev, components_next) =
+                        self.rope.components.split_at_mut(component_idx);
+                    let prev = &components_prev[component_idx - 1];
+                    let current = &mut components_next[0];
+
+                    let update = match *prev - *current {
+                        Vector(x, y) if x.abs() <= 1 && y.abs() <= 1 => Vector(0, 0),
+
+                        Vector(x, 0) => Vector(x.signum(), 0),
+                        Vector(0, y) => Vector(0, y.signum()),
+
+                        Vector(x, y) => Vector(x.signum(), y.signum()),
+                    };
+
+                    *current += update;
+                }
+
+                Some(*self.rope.tail_coord())
+            }
+        }
+
+        TailTrackIterator {
+            rope: self,
+            movement,
+        }
     }
 
     fn head_coord(&mut self) -> &mut Vector {
