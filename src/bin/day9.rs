@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     ops::{Add, AddAssign, Div, Mul, Neg, Sub},
     str::FromStr,
 };
@@ -9,46 +9,74 @@ fn main() {
         .lines()
         .map(Result::unwrap)
         .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<Movement>().unwrap());
+        .map(|s| s.parse::<Movement>().unwrap())
+        .collect::<Vec<_>>();
 
-    let mut rope = Rope::default();
+    println!("{}", solve::<2>(&movements));
+    println!("{}", solve::<10>(&movements));
+}
+
+fn solve<const N_COMPONENTS: usize>(movements: &[Movement]) -> usize {
+    let mut rope: Rope<N_COMPONENTS> = Rope::default();
 
     let mut visited_tail_positions = HashSet::new();
-    for mov in movements {
+    for mov in movements.iter().copied() {
         let step_tail_positions = rope.translate_head_track_tail(mov);
         visited_tail_positions.extend(step_tail_positions);
     }
 
-    println!("{}", visited_tail_positions.len());
+    visited_tail_positions.len()
 }
 
-#[derive(Default)]
-struct Rope {
-    head_coord: Vector,
-    tail_coord: Vector,
+struct Rope<const N_COMPONENTS: usize> /* where NComponents >= 2, but we can't express that yet */ {
+    components: [Vector; N_COMPONENTS],
 }
 
-impl Rope {
+impl<const N_COMPONENTS: usize> Rope<N_COMPONENTS> {
     fn translate_head_track_tail(&mut self, mut mov: Movement) -> Vec<Vector> {
         let mut tail_positions = Vec::with_capacity(mov.amount as usize);
 
-        while let Some(new_head) = mov.translate_coord_step(self.head_coord) {
-            self.head_coord = new_head;
+        while let Some(new_head) = mov.translate_coord_step(*self.head_coord()) {
+            *self.head_coord() = new_head;
 
-            let tail_update = match self.head_coord - self.tail_coord {
-                Vector(x, y) if x.abs() <= 1 && y.abs() <= 1 => Vector(0, 0),
+            for idx in 1..N_COMPONENTS {
+                let (components_prev, components_next) = self.components.split_at_mut(idx);
+                let prev = &components_prev[idx - 1];
+                let current = &mut components_next[0];
 
-                Vector(x, 0) => Vector(x.signum(), 0),
-                Vector(0, y) => Vector(0, y.signum()),
+                let update = match *prev - *current {
+                    Vector(x, y) if x.abs() <= 1 && y.abs() <= 1 => Vector(0, 0),
 
-                Vector(x, y) => Vector(x.signum(), y.signum()),
-            };
-            self.tail_coord += tail_update;
+                    Vector(x, 0) => Vector(x.signum(), 0),
+                    Vector(0, y) => Vector(0, y.signum()),
 
-            tail_positions.push(self.tail_coord);
+                    Vector(x, y) => Vector(x.signum(), y.signum()),
+                };
+
+                *current += update;
+            }
+
+            tail_positions.push(*self.tail_coord());
         }
 
         tail_positions
+    }
+
+    fn head_coord(&mut self) -> &mut Vector {
+        &mut self.components[0]
+    }
+
+    fn tail_coord(&mut self) -> &mut Vector {
+        &mut self.components[N_COMPONENTS - 1]
+    }
+}
+
+// for some reason Default is not implemented for [T; N] yet
+impl<const N_COMPONENTS: usize> Default for Rope<N_COMPONENTS> {
+    fn default() -> Self {
+        Rope {
+            components: [Default::default(); N_COMPONENTS],
+        }
     }
 }
 
@@ -78,10 +106,10 @@ enum Direction {
     Right,
 }
 
-impl Into<Vector> for Direction {
-    fn into(self) -> Vector {
+impl From<Direction> for Vector {
+    fn from(val: Direction) -> Self {
         use Direction::*;
-        match self {
+        match val {
             Up => Vector(0, 1),
             Down => Vector(0, -1),
             Left => Vector(-1, 0),
