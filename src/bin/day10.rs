@@ -1,68 +1,89 @@
 use std::str::FromStr;
 
 fn main() {
-    let mut program_uops = std::io::stdin()
+    let simulation_ops = std::io::stdin()
         .lines()
         .map(Result::unwrap)
         .filter(|s| !s.is_empty())
         .map(|s| s.parse::<Instruction>().unwrap())
-        .flat_map(Instruction::to_micro_ops);
+        .flat_map(Instruction::to_simulation_ops);
 
-    let mut cpu_state = CpuState::default();
+    let mut sim = Simulation {
+        ops_iter: simulation_ops,
+        state: SimulationState::default(),
+    };
 
     let mut part1_solution = 0;
     for inspection_point in [20, 60, 100, 140, 180, 220] {
-        cpu_state = program_uops
-            .fold_n(
-                inspection_point - cpu_state.cycle_counter - 1,
-                cpu_state,
-                CpuState::update,
-            )
+        sim.step_until(|st| st.started_cycle_counter == inspection_point)
             .expect("not enough instructions");
 
-        debug_assert_eq!(cpu_state.cycle_counter + 1, inspection_point);
-
-        let part1_signal_strength = (inspection_point as i64) * cpu_state.register_x;
+        let part1_signal_strength = (inspection_point as i64) * sim.state().register_x;
         part1_solution += part1_signal_strength;
     }
 
     println!("{}", part1_solution);
 }
 
-#[derive(Debug, PartialEq)]
-struct CpuState {
-    register_x: i64,
-    cycle_counter: usize,
+struct Simulation<OpIt> {
+    ops_iter: OpIt,
+    state: SimulationState,
 }
 
-impl CpuState {
-    fn update(mut self, op: MicroOp) -> CpuState {
-        self.cycle_counter += 1;
-
-        match op {
-            MicroOp::Noop => (),
-            MicroOp::AddX(amount) => {
-                self.register_x += amount;
+impl<OpIt> Simulation<OpIt>
+where
+    OpIt: Iterator<Item = SimOp>,
+{
+    fn step_until(&mut self, mut cond: impl FnMut(&SimulationState) -> bool) -> Result<(), ()> {
+        while !cond(&self.state) {
+            match self.ops_iter.next() {
+                None => return Err(()),
+                Some(x) => {
+                    self.state.update(x);
+                }
             }
         }
 
-        self
+        Ok(())
+    }
+
+    fn state(&self) -> &SimulationState {
+        &self.state
     }
 }
 
-impl Default for CpuState {
+#[derive(Debug, PartialEq)]
+struct SimulationState {
+    register_x: i64,
+    started_cycle_counter: usize,
+}
+
+impl SimulationState {
+    fn update(&mut self, op: SimOp) {
+        match op {
+            SimOp::IncrStartedCycleCounter => {
+                self.started_cycle_counter += 1;
+            }
+            SimOp::AddX(amount) => {
+                self.register_x += amount;
+            }
+        }
+    }
+}
+
+impl Default for SimulationState {
     fn default() -> Self {
-        CpuState {
+        SimulationState {
             register_x: 1,
-            cycle_counter: 0,
+            started_cycle_counter: 0,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum MicroOp {
+enum SimOp {
     AddX(i64),
-    Noop,
+    IncrStartedCycleCounter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,12 +93,17 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn to_micro_ops(self) -> Box<dyn Iterator<Item = MicroOp>> {
+    fn to_simulation_ops(self) -> Box<dyn Iterator<Item = SimOp>> {
         match self {
-            Instruction::AddX(amount) => {
-                Box::new([MicroOp::Noop, MicroOp::AddX(amount)].into_iter())
-            }
-            Instruction::Noop => Box::new([MicroOp::Noop].into_iter()),
+            Instruction::AddX(amount) => Box::new(
+                [
+                    SimOp::IncrStartedCycleCounter,
+                    SimOp::IncrStartedCycleCounter,
+                    SimOp::AddX(amount),
+                ]
+                .into_iter(),
+            ),
+            Instruction::Noop => Box::new([SimOp::IncrStartedCycleCounter].into_iter()),
         }
     }
 }
@@ -100,39 +126,6 @@ impl FromStr for Instruction {
         };
 
         Ok(instr)
-    }
-}
-
-trait FoldNExt: Iterator {
-    fn fold_n<B: std::fmt::Debug>(
-        &mut self,
-        n: usize,
-        init: B,
-        folder: impl FnMut(B, Self::Item) -> B,
-    ) -> Option<B>;
-}
-
-impl<It: Iterator> FoldNExt for It {
-    fn fold_n<B: std::fmt::Debug>(
-        &mut self,
-        mut n: usize,
-        init: B,
-        mut folder: impl FnMut(B, Self::Item) -> B,
-    ) -> Option<B> {
-        let mut accum = init;
-
-        while n > 0 {
-            match self.next() {
-                Some(x) => {
-                    accum = folder(accum, x);
-                }
-                None => return None,
-            }
-
-            n -= 1;
-        }
-
-        Some(accum)
     }
 }
 
