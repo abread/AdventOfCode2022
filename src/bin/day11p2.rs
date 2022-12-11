@@ -30,21 +30,6 @@ fn main() {
                     .push(item_worry);
             }
         }
-
-        if [
-            1, 20, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
-        ]
-        .contains(&(_round + 1))
-        {
-            println!("== After round {} ==", _round + 1);
-            for (idx, m) in monkeys.iter().enumerate() {
-                println!(
-                    "Monkey {} inspected items {} times",
-                    idx,
-                    m.borrow().inspection_count
-                );
-            }
-        }
     }
 
     monkeys.sort_by_key(|m| m.borrow().inspection_count);
