@@ -1,5 +1,5 @@
 use nom::{branch, bytes::complete::tag, combinator, multi, sequence, IResult};
-use std::{cell::RefCell, io::Read};
+use std::io::Read;
 
 fn main() {
     let mut input = String::new();
@@ -7,32 +7,28 @@ fn main() {
 
     let mut monkeys = parse_monkeys(&input)
         .unwrap()
-        .1
-        .into_iter()
-        .map(RefCell::new)
-        .collect::<Vec<_>>();
+        .1;
 
     let worry_modulus = monkeys
         .iter()
-        .map(|m| m.borrow().decision_rule.test_modulus)
+        .map(|m| m.decision_rule.test_modulus)
         .product::<u64>();
 
     for _round in 0..10000 {
-        for monkey in &monkeys {
+        for i in 0..monkeys.len() {
             for MonkeyThrow {
                 dest_monkey,
                 item_worry,
-            } in monkey.borrow_mut().step(worry_modulus)
+            } in monkeys[i].step(worry_modulus)
             {
                 monkeys[dest_monkey]
-                    .borrow_mut()
                     .item_worry_levels
                     .push(item_worry);
             }
         }
     }
 
-    monkeys.sort_by_key(|m| m.borrow().inspection_count);
+    monkeys.sort_by_key(|m| m.inspection_count);
 
     println!(
         "{}",
@@ -40,7 +36,7 @@ fn main() {
             .iter()
             .rev()
             .take(2)
-            .map(|m| m.borrow().inspection_count)
+            .map(|m| m.inspection_count)
             .product::<usize>()
     );
 }
