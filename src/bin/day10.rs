@@ -21,8 +21,16 @@ fn main() {
         let part1_signal_strength = (inspection_point as i64) * sim.state().register_x;
         part1_solution += part1_signal_strength;
     }
-
     println!("{}", part1_solution);
+
+    sim.step_remaining();
+    for line in sim.state().crt.chunks_exact(CRT_COLUMNS) {
+        for c in line.iter().map(|is_lit| if *is_lit { '#' } else { '.' }) {
+            print!("{}", c);
+        }
+
+        println!();
+    }
 }
 
 struct Simulation<OpIt> {
@@ -36,11 +44,21 @@ where
 {
     fn step_until(&mut self, mut cond: impl FnMut(&SimulationState) -> bool) -> Result<(), ()> {
         while !cond(&self.state) {
-            match self.ops_iter.next() {
-                None => return Err(()),
-                Some(x) => {
-                    self.state.update(x);
-                }
+            self.step_one()?;
+        }
+
+        Ok(())
+    }
+
+    fn step_remaining(&mut self) {
+        while self.step_one().is_ok() {}
+    }
+
+    fn step_one(&mut self) -> Result<(), ()> {
+        match self.ops_iter.next() {
+            None => return Err(()),
+            Some(x) => {
+                self.state.update(x);
             }
         }
 
@@ -52,10 +70,16 @@ where
     }
 }
 
+const CRT_COLUMNS: usize = 40;
+const CRT_ROWS: usize = 6;
+
 #[derive(Debug, PartialEq)]
 struct SimulationState {
     register_x: i64,
     started_cycle_counter: usize,
+
+    crt: [bool; CRT_ROWS * CRT_COLUMNS],
+    crt_electron_gun_pos: usize,
 }
 
 impl SimulationState {
@@ -67,6 +91,15 @@ impl SimulationState {
             SimOp::AddX(amount) => {
                 self.register_x += amount;
             }
+            SimOp::UpdateCrt => {
+                let gun_column = (self.crt_electron_gun_pos % CRT_COLUMNS) as i64;
+                let sprite_pos = (self.register_x - 1)..=(self.register_x + 1);
+                let is_lit = sprite_pos.contains(&gun_column);
+                self.crt[self.crt_electron_gun_pos] = is_lit;
+
+                self.crt_electron_gun_pos =
+                    (self.crt_electron_gun_pos + 1) % (CRT_ROWS * CRT_COLUMNS);
+            }
         }
     }
 }
@@ -76,6 +109,9 @@ impl Default for SimulationState {
         SimulationState {
             register_x: 1,
             started_cycle_counter: 0,
+
+            crt: [false; CRT_ROWS * CRT_COLUMNS],
+            crt_electron_gun_pos: 0,
         }
     }
 }
@@ -84,6 +120,7 @@ impl Default for SimulationState {
 enum SimOp {
     AddX(i64),
     IncrStartedCycleCounter,
+    UpdateCrt,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -98,12 +135,16 @@ impl Instruction {
             Instruction::AddX(amount) => Box::new(
                 [
                     SimOp::IncrStartedCycleCounter,
+                    SimOp::UpdateCrt,
                     SimOp::IncrStartedCycleCounter,
+                    SimOp::UpdateCrt,
                     SimOp::AddX(amount),
                 ]
                 .into_iter(),
             ),
-            Instruction::Noop => Box::new([SimOp::IncrStartedCycleCounter].into_iter()),
+            Instruction::Noop => {
+                Box::new([SimOp::IncrStartedCycleCounter, SimOp::UpdateCrt].into_iter())
+            }
         }
     }
 }
