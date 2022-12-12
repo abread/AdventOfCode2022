@@ -8,7 +8,8 @@ fn main() {
             .take_while(|s| !s.is_empty()),
     );
 
-    println!("{}", puzzle.solve_part1());
+    //println!("{}", puzzle.solve_part1());
+    println!("{}", puzzle.solve_part2());
 }
 
 #[derive(Debug)]
@@ -48,60 +49,91 @@ impl Puzzle {
     }
 
     fn solve_part1(&self) -> usize {
-        let mut bfs = PuzzleBfs::new(self);
-        bfs.run_to_completion();
+        let neigh_filter = |(neigh_x, neigh_y): (usize, usize), (px, py): (usize, usize)| {
+            self.map[neigh_x][neigh_y] - self.map[px][py] <= 1
+        };
+        let mut bfs = PuzzleBfs::new(self, &neigh_filter);
+
+        let stop_cond = |coords| coords == self.end;
+        bfs.run_to_completion(self.start, stop_cond);
 
         let (endx, endy) = self.end;
         bfs.dist_from_start[endx][endy]
     }
+
+    fn solve_part2(&self) -> usize {
+        let neigh_filter = |(neigh_x, neigh_y): (usize, usize), (px, py): (usize, usize)| {
+            self.map[px][py] - self.map[neigh_x][neigh_y] <= 1
+        };
+        let mut bfs = PuzzleBfs::new(self, &neigh_filter);
+
+        let stop_cond = |_| false;
+        bfs.run_to_completion(self.end, stop_cond);
+
+        let possible_start_positions = self.map.iter().enumerate().flat_map(|(x, line)| {
+            line.iter()
+                .enumerate()
+                .filter_map(move |(y, &h)| if h == 0 { Some((x, y)) } else { None })
+        });
+
+        possible_start_positions
+            .map(|(x, y)| bfs.dist_from_start[x][y])
+            .min()
+            .unwrap()
+    }
 }
 
-struct PuzzleBfs<'puz> {
-    puzzle: &'puz Puzzle,
+struct PuzzleBfs<'nf, NF> {
     prev: Vec<Vec<(usize, usize)>>,
     dist_from_start: Vec<Vec<usize>>,
+    neighbor_filter: &'nf NF,
 }
 
-impl<'puz> PuzzleBfs<'puz> {
-    fn new(puzzle: &'puz Puzzle) -> Self {
+impl<'nf, NF> PuzzleBfs<'nf, NF>
+where
+    NF: Fn((usize, usize), (usize, usize)) -> bool,
+{
+    fn new<'puz>(puzzle: &'puz Puzzle, neighbor_filter: &'nf NF) -> Self {
         let n_rows = puzzle.map.len();
         let n_cols = puzzle.map[0].len();
 
         let prev = (0..n_rows).map(|_| vec![(0, 0); n_cols]).collect();
-        let mut dist_from_start: Vec<Vec<usize>> =
+        let dist_from_start: Vec<Vec<usize>> =
             (0..n_rows).map(|_| vec![usize::MAX; n_cols]).collect();
 
-        dist_from_start[puzzle.start.0][puzzle.start.1] = 0;
-
         PuzzleBfs {
-            puzzle,
             prev,
             dist_from_start,
+            neighbor_filter,
         }
     }
 
-    fn expand<'this>(
-        &'this self,
-        (pos_x, pos_y): (usize, usize),
-    ) -> impl Iterator<Item = (usize, usize)> + 'puz {
-        let puz = self.puzzle;
+    fn expand(&self, (pos_x, pos_y): (usize, usize)) -> impl Iterator<Item = (usize, usize)> + 'nf {
+        let n_rows = self.dist_from_start.len();
+        let n_cols = self.dist_from_start[0].len();
+        let nf = self.neighbor_filter;
 
         [(-1_isize, 0_isize), (1, 0), (0, -1), (0, 1)]
             .into_iter()
             .map(move |(delta_x, delta_y)| (pos_x as isize + delta_x, pos_y as isize + delta_y))
             .filter(|&(x, y)| x >= 0 && y >= 0)
             .map(|(x, y)| (x as usize, y as usize))
-            .filter(|&(x, y)| x < puz.map.len() && y < puz.map[0].len())
-            .filter(move |&(x, y)| puz.map[x][y] - puz.map[pos_x][pos_y] <= 1)
+            .filter(move |&(x, y)| x < n_rows && y < n_cols)
+            .filter(move |&(x, y)| nf((x, y), (pos_x, pos_y)))
     }
 
-    fn run_to_completion(&mut self) {
+    fn run_to_completion(
+        &mut self,
+        start: (usize, usize),
+        stop_condition: impl Fn((usize, usize)) -> bool,
+    ) {
         let mut queue = VecDeque::with_capacity(1);
-        queue.push_back(self.puzzle.start);
+        queue.push_back(start);
 
+        self.dist_from_start[start.0][start.1] = 0;
         while let Some((pos_x, pos_y)) = queue.pop_front() {
-            if (pos_x, pos_y) == self.puzzle.end {
-                break; // reached the end
+            if stop_condition((pos_x, pos_y)) {
+                break;
             }
 
             for (neigh_x, neigh_y) in self.expand((pos_x, pos_y)) {
