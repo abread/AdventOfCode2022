@@ -3,28 +3,42 @@ use std::{collections::HashSet, io::stdin, ops::Range};
 use nom::{bytes::complete::tag, combinator, sequence, IResult};
 
 fn main() {
-    let input = stdin()
+    let sensor_info = stdin()
         .lines()
         .map(Result::unwrap)
         .filter(|s| !s.is_empty())
         .map(|s| parse_sensor_info(&s).unwrap().1)
         .collect::<Vec<_>>();
 
-    let areas: Vec<CoveredArea> = input.iter().cloned().map(|info| info.into()).collect();
+    let areas: Vec<CoveredArea> = sensor_info.iter().cloned().map(|info| info.into()).collect();
 
-    //const Y: i64 = 10;
-    const Y: i64 = 2000000;
+    println!("{}", solve_part1(&sensor_info, &areas, 2000000));
+    // dbg!(solve_part1(&sensor_info, &areas, 10));
+}
 
-    let mut part1_x_ranges = areas
+fn solve_part1(sensor_info: &[SensorInfo], areas: &[CoveredArea], target_y: i64) -> usize {
+    let mut occupied_x_ranges = areas
         .iter()
-        .map(|area| area.xx_at_y(Y))
+        .map(|area| area.xx_at_y(target_y))
         .filter(|r| !r.is_empty())
         .collect::<HashSet<_>>();
 
-    while let Some((r1, r2)) = part1_x_ranges
+    dedupe_range_set(&mut occupied_x_ranges);
+
+    occupied_x_ranges.into_iter().map(|r| r.count()).sum::<usize>()
+        - sensor_info
+            .iter()
+            .map(|info| info.beacon_pos)
+            .filter(|&(_, y)| y == target_y)
+            .collect::<HashSet<_>>()
+            .len()
+}
+
+fn dedupe_range_set(range_set: &mut HashSet<Range<i64>>) {
+    while let Some((r1, r2)) = range_set
         .iter()
         .enumerate()
-        .flat_map(|(i, range)| std::iter::repeat(range).zip(part1_x_ranges.iter().skip(i + 1)))
+        .flat_map(|(i, range)| std::iter::repeat(range).zip(range_set.iter().skip(i + 1)))
         .find(|(r1, r2)| {
             r1.contains(&r2.start)
                 || r1.contains(&r2.end)
@@ -35,22 +49,11 @@ fn main() {
         let r1 = r1.clone();
         let r2 = r2.clone();
 
-        part1_x_ranges.remove(&r1);
-        part1_x_ranges.remove(&r2);
+        range_set.remove(&r1);
+        range_set.remove(&r2);
 
-        part1_x_ranges.insert(r1.start.min(r2.start)..r1.end.max(r2.end));
+        range_set.insert(r1.start.min(r2.start)..r1.end.max(r2.end));
     }
-
-    println!(
-        "{}",
-        part1_x_ranges.into_iter().map(|r| r.count()).sum::<usize>()
-            - input
-                .iter()
-                .map(|info| info.beacon_pos)
-                .filter(|&(_, y)| y == Y)
-                .collect::<HashSet<_>>()
-                .len()
-    );
 }
 
 #[derive(Debug)]
