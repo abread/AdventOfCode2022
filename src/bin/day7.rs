@@ -132,7 +132,7 @@ fn parse_puzzle_input_line(input: &str) -> PuzzleInputLine {
     let (rem, res) = parser_res.unwrap();
 
     if !rem.is_empty() {
-        panic!("leftover input: {}", rem);
+        panic!("leftover input: {rem}");
     }
 
     res

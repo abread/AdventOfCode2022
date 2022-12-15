@@ -5,9 +5,7 @@ fn main() {
     let mut input = String::new();
     std::io::stdin().lock().read_to_string(&mut input).unwrap();
 
-    let mut monkeys = parse_monkeys(&input)
-        .unwrap()
-        .1;
+    let mut monkeys = parse_monkeys(&input).unwrap().1;
 
     let worry_modulus = monkeys
         .iter()
@@ -21,9 +19,7 @@ fn main() {
                 item_worry,
             } in monkeys[i].step(worry_modulus)
             {
-                monkeys[dest_monkey]
-                    .item_worry_levels
-                    .push(item_worry);
+                monkeys[dest_monkey].item_worry_levels.push(item_worry);
             }
         }
     }
