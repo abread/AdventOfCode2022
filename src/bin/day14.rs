@@ -8,17 +8,28 @@ fn main() {
 
     let mut map = input.flat_map(parse_path).collect::<HashSet<_>>();
 
-    let abyss_y = map.iter().map(|(_x, y)| y).max().unwrap() + 1;
+    let floor_y = map.iter().map(|(_x, y)| y).max().unwrap() + 1;
 
-    'outer: for i in 1.. {
+    let mut part1_done = false;
+
+    for i in 1.. {
         let mut grain_pos = (500, 0);
         while let Some(next) = grain_next_pos(&map, grain_pos) {
-            if grain_pos.1 >= abyss_y {
+            if grain_pos.1 >= floor_y && !part1_done {
                 println!("{}", i - 1);
-                break 'outer;
+                part1_done = true;
+            }
+
+            if grain_pos.1 == floor_y {
+                break;
             }
 
             grain_pos = next;
+        }
+
+        if grain_pos == (500, 0) {
+            println!("{i}");
+            break;
         }
 
         map.insert(grain_pos);
