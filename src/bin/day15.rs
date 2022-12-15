@@ -21,27 +21,24 @@ fn main() {
         .filter(|r| !r.is_empty())
         .collect::<HashSet<_>>();
 
-    'outer: loop {
-        let ranges = part1_x_ranges.iter().cloned().collect::<Vec<_>>();
+    while let Some((r1, r2)) = part1_x_ranges
+        .iter()
+        .enumerate()
+        .flat_map(|(i, range)| std::iter::repeat(range).zip(part1_x_ranges.iter().skip(i + 1)))
+        .find(|(r1, r2)| {
+            r1.contains(&r2.start)
+                || r1.contains(&r2.end)
+                || r2.contains(&r1.start)
+                || r2.contains(&r1.end)
+        })
+    {
+        let r1 = r1.clone();
+        let r2 = r2.clone();
 
-        for (i, r1) in ranges.iter().enumerate() {
-            for r2 in &ranges[i + 1..] {
-                if r1.contains(&r2.start)
-                    || r1.contains(&r2.end)
-                    || r2.contains(&r1.start)
-                    || r2.contains(&r1.end)
-                {
-                    part1_x_ranges.remove(r1);
-                    part1_x_ranges.remove(r2);
+        part1_x_ranges.remove(&r1);
+        part1_x_ranges.remove(&r2);
 
-                    part1_x_ranges.insert(r1.start.min(r2.start)..r1.end.max(r2.end));
-
-                    continue 'outer;
-                }
-            }
-        }
-
-        break;
+        part1_x_ranges.insert(r1.start.min(r2.start)..r1.end.max(r2.end));
     }
 
     println!(
