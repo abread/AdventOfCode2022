@@ -21,12 +21,12 @@ fn main() {
         let part1_signal_strength = (inspection_point as i64) * sim.state().register_x;
         part1_solution += part1_signal_strength;
     }
-    println!("{}", part1_solution);
+    println!("{part1_solution}");
 
     sim.step_remaining();
     for line in sim.state().crt.chunks_exact(CRT_COLUMNS) {
         for c in line.iter().map(|is_lit| if *is_lit { '#' } else { '.' }) {
-            print!("{}", c);
+            print!("{c}");
         }
 
         println!();

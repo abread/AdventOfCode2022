@@ -8,7 +8,7 @@ fn main() {
             .take_while(|s| !s.is_empty()),
     );
 
-    //println!("{}", puzzle.solve_part1());
+    println!("{}", puzzle.solve_part1());
     println!("{}", puzzle.solve_part2());
 }
 

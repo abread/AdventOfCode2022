@@ -17,7 +17,7 @@ fn main() {
         .collect();
 
     // dbg!(solve_part1(&sensor_info, &areas, 10));
-    // println!("{}", solve_part1(&sensor_info, &areas, 2000000));
+    println!("{}", solve_part1(&sensor_info, &areas, 2000000));
 
     let limit = 0..(4000000 + 1);
     //dbg!(solve_part2(&sensor_info, &areas, (0..21, 0..21)));
@@ -122,19 +122,6 @@ struct CoveredArea {
 }
 
 impl CoveredArea {
-    fn contains(&self, pos: (i64, i64)) -> bool {
-        manhattan_distance(self.center, pos) <= self.radius
-    }
-
-    fn edges(&self) -> (i64, i64, i64, i64) {
-        (
-            self.center.0 - self.radius,
-            self.center.1 - self.radius,
-            self.center.0 + self.radius,
-            self.center.1 + self.radius,
-        )
-    }
-
     fn xx_at_y(&self, y: i64) -> Range<i64> {
         let range = self.radius - (y - self.center.1).abs();
 

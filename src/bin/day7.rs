@@ -34,10 +34,10 @@ fn main() {
     );
 }
 
-fn calc_sizes<'f, 'pr>(
+fn calc_sizes<'f>(
     root: &'f File,
     name: &'f str,
-    path_prefix: &'pr [&'f str],
+    path_prefix: &[&'f str],
 ) -> (usize, HashMap<Vec<&'f str>, usize>) {
     let mut sizes = HashMap::new();
 
