@@ -1,9 +1,4 @@
-use std::{
-    collections::HashSet,
-    io::stdin,
-    ops::Add,
-    str::FromStr,
-};
+use std::{collections::HashSet, io::stdin, ops::Add, str::FromStr};
 
 fn main() {
     let puzzle = Puzzle::parse(
