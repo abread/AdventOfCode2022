@@ -4,6 +4,7 @@ use std::{
     io::stdin,
 };
 
+use itertools::Itertools;
 use nom::{branch, bytes::complete::tag, combinator, multi, sequence, IResult};
 
 fn main() {
@@ -14,31 +15,60 @@ fn main() {
         .map(|s| parse_valve_info(&s).unwrap().1)
         .collect::<HashMap<_, _>>();
 
-    println!("{}", weighted_bfs_dist(&valve_info, 30));
+    println!("{}", weighted_bfs_dist::<1>(&valve_info, 30));
+    println!("{}", weighted_bfs_dist::<2>(&valve_info, 26));
 }
 
-fn weighted_bfs_dist(vi: &HashMap<ValveId, ValveInfo>, time: usize) -> i64 {
+fn weighted_bfs_dist<const N_ENT: usize>(vi: &HashMap<ValveId, ValveInfo>, time: usize) -> i64 {
     #[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Hash, Clone)]
-    struct State {
+    struct State<const N_ENT: usize> {
         time_left: usize,
-        current_node: ValveId,
+        ent_current_node: [ValveId; N_ENT],
         open_nodes: BTreeMap<ValveId, usize>,
         pressure_acc: i64,
     }
 
-    let initial_state = State {
+    #[derive(Debug, Clone)]
+    enum Action {
+        MoveTo(usize, ValveId),
+        OpenValve(usize),
+    }
+
+    impl<const N_ENT: usize> State<N_ENT> {
+        fn apply(mut self, action: Action, vi: &HashMap<ValveId, ValveInfo>) -> Self {
+            match action {
+                Action::MoveTo(ent_idx, id) => {
+                    self.ent_current_node[ent_idx] = id;
+                }
+                Action::OpenValve(ent_idx) => {
+                    if self
+                        .open_nodes
+                        .insert(self.ent_current_node[ent_idx], self.time_left)
+                        .is_none()
+                    {
+                        self.pressure_acc += (self.time_left - 1) as i64
+                            * vi[&self.ent_current_node[ent_idx]].flow_rate;
+                    }
+                }
+            }
+
+            self
+        }
+    }
+
+    let initial_state = State::<N_ENT> {
         time_left: time,
-        current_node: ['A', 'A'],
+        ent_current_node: [['A', 'A']; N_ENT],
         open_nodes: BTreeMap::new(),
         pressure_acc: 0,
     };
 
-    let max_valve_flow = vi.values().map(|info| info.flow_rate).max().unwrap();
+    let max_valve_flow = vi.values().map(|info| info.flow_rate).max().unwrap() as usize;
 
     let mut open_set = PriorityQueue::new();
     open_set.push(
         initial_state,
-        max_valve_flow * (time / 2 * (time / 2 + 1)) as i64,
+        (max_valve_flow * (time / 2 * (time / 2 + 1))) as i64,
     );
 
     while let Some((cur_st, _cur_dist)) = open_set.pop() {
@@ -47,41 +77,46 @@ fn weighted_bfs_dist(vi: &HashMap<ValveId, ValveInfo>, time: usize) -> i64 {
             return cur_st.pressure_acc;
         }
 
-        let next_states = if !cur_st.open_nodes.contains_key(&cur_st.current_node)
-            && vi[&cur_st.current_node].flow_rate > 0
-        {
-            std::iter::once(Some(State {
-                time_left: cur_st.time_left - 1,
-                current_node: cur_st.current_node,
-                open_nodes: {
-                    let mut on = cur_st.open_nodes.clone();
-                    on.insert(cur_st.current_node, cur_st.time_left);
-                    on
-                },
-                pressure_acc: cur_st.pressure_acc
-                    + (cur_st.time_left - 1) as i64 * vi[&cur_st.current_node].flow_rate,
-            }))
-        } else {
-            std::iter::once(None)
-        }
-        .flatten()
-        .chain(
-            vi[&cur_st.current_node]
-                .path_to
-                .iter()
-                .map(|&neigh_idx| State {
-                    time_left: cur_st.time_left - 1,
-                    current_node: neigh_idx,
-                    open_nodes: cur_st.open_nodes.clone(),
-                    pressure_acc: cur_st.pressure_acc,
-                }),
-        );
+        let possible_actions = cur_st
+            .ent_current_node
+            .iter()
+            .enumerate()
+            .map(|(ent_idx, ent_current_node)| {
+                std::iter::once(
+                    if !cur_st.open_nodes.contains_key(ent_current_node)
+                        && vi[ent_current_node].flow_rate > 0
+                    {
+                        Some(Action::OpenValve(ent_idx))
+                    } else {
+                        None
+                    },
+                )
+                .flatten()
+                .chain(
+                    vi[ent_current_node]
+                        .path_to
+                        .iter()
+                        .map(move |&neigh_idx| Action::MoveTo(ent_idx, neigh_idx)),
+                )
+                .collect::<Vec<_>>()
+                .into_iter()
+            })
+            .multi_cartesian_product();
+
+        let next_states = possible_actions.map(|actions| {
+            let mut st = actions
+                .into_iter()
+                .fold(cur_st.clone(), |st, action| st.apply(action, vi));
+
+            st.time_left -= 1;
+            st
+        });
 
         for neigh_st in next_states {
-            let time_left = neigh_st.time_left as i64;
+            let time_left = neigh_st.time_left;
             let generous_possible_rem_flow_est =
-                max_valve_flow * ((time_left / 2) * (time_left / 2 + 1)) / 2;
-            let prio = -(neigh_st.pressure_acc + generous_possible_rem_flow_est);
+                max_valve_flow * ((time_left / 2) * (time_left / 2 + 1)) / 2 * N_ENT;
+            let prio = -(neigh_st.pressure_acc + generous_possible_rem_flow_est as i64);
             open_set.push(neigh_st, prio);
         }
     }
